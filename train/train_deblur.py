@@ -1,26 +1,33 @@
+from load_hdc import load_hdc
+from dewarp import warp
+import div2k
 from PIL import Image
 import numpy as np
-import os, glob, time, json, random, shutil
+import os
+import glob
+import time
+import json
+import random
+import shutil
 import torch
 import torch.nn.functional as F
 import matplotlib.pyplot as plt
 import cv2
 import sys
 sys.path.append("..")
-import div2k
-from dewarp import warp
-from load_hdc import load_hdc
-#sys.path.append("../exp028_train_blur_from_model")
-#sys.path.append("../exp028_train_blur_from_model/networks")
+# sys.path.append("../exp028_train_blur_from_model")
+# sys.path.append("../exp028_train_blur_from_model/networks")
 
 random.seed(0)
 np.random.seed(0)
 torch.manual_seed(0)
 
+
 def update(d, key, value):
     d = dict(d)
     d[key] = value
     return d
+
 
 def show(images, nx, ny, path=None):
     plt.clf()
@@ -47,6 +54,7 @@ def show(images, nx, ny, path=None):
     else:
         plt.show()
 
+
 def load_image_pairs_div2k(n, blur_model, train):
     psf_radius = blur_model.psf_radius
 
@@ -68,16 +76,20 @@ def load_image_pairs_div2k(n, blur_model, train):
             sharp = sharp[psf_radius:-psf_radius, psf_radius:-psf_radius]
 
             sharp = np.clip(sharp.cpu().numpy() * 255, 0, 255).astype(np.uint8)
-            blurry = np.clip(blurry.cpu().numpy() * 255, 0, 255).astype(np.uint8)
+            blurry = np.clip(blurry.cpu().numpy() * 255,
+                             0, 255).astype(np.uint8)
 
-        #path = f"../output/div2k_step4_blurred_train_{train}/{i:04d}.bmp"
-        #print("loading", path)
+        # path = f"../output/div2k_step4_blurred_train_{train}/{i:04d}.bmp"
+        # print("loading", path)
 
         pairs.append((sharp, blurry))
 
-        if i >= n: break
+        if i >= n:
+            break
 
     return pairs
+
+
 """
 def load(step, cam, sample, font):
     fix_for_inconsistent_naming_scheme = {
@@ -144,14 +156,18 @@ def load_image_pairs_hdc2(step, font, train):
 
     return pairs
 """
+
+
 def load_image_pairs_hdc_original(step, fonts, samples, blur_model):
+    import torchvision
+
     M = blur_model.M
 
     pairs = []
     for sample in samples:
         for font in fonts:
             print(f"load hdc sample {sample} font {font}")
-            sharp  = load_hdc(step=step, cam=1, sample=sample, font=font)
+            sharp = load_hdc(step=step, cam=1, sample=sample, font=font)
             blurry = load_hdc(step=step, cam=2, sample=sample, font=font)
 
             # dewarp blurry image to make NN job easier
@@ -168,6 +184,7 @@ def load_image_pairs_hdc_original(step, fonts, samples, blur_model):
 
     return pairs
 
+
 def make_batch(batch_size, crop_size, device, augmentation_noise, samples, **kwargs):
     sharps = torch.zeros((batch_size, 1, crop_size, crop_size))
     blurrs = torch.zeros((batch_size, 3, crop_size, crop_size))
@@ -180,14 +197,16 @@ def make_batch(batch_size, crop_size, device, augmentation_noise, samples, **kwa
         x = np.random.randint(w - crop_size)
         y = np.random.randint(h - crop_size)
 
-        sharps[i, 0] = torch.tensor(sharp [y:y+crop_size, x:x+crop_size].astype(np.float32) / 255.0)
+        sharps[i, 0] = torch.tensor(
+            sharp[y:y+crop_size, x:x+crop_size].astype(np.float32) / 255.0)
 
-        blurry_crop = torch.tensor(blurry[y:y+crop_size, x:x+crop_size].astype(np.float32) / 255.0)
+        blurry_crop = torch.tensor(
+            blurry[y:y+crop_size, x:x+crop_size].astype(np.float32) / 255.0)
 
         blurrs[i, 0] = blurry_crop
         blurrs[i, 1] = blurry_crop
         blurrs[i, 2] = blurry_crop
-        #blurrs[i, 3] = blurry_crop
+        # blurrs[i, 3] = blurry_crop
 
     sharps = sharps.to(device)
     blurrs = blurrs.to(device)
@@ -197,17 +216,19 @@ def make_batch(batch_size, crop_size, device, augmentation_noise, samples, **kwa
 
     return blurrs, sharps
 
+
 def train(net, args, num_batches, lr, device, train_samples, test_samples, step, **kwargs):
     optimizer = torch.optim.Adam(net.parameters(), lr=lr)
 
-    test_args = update(update(args, "batch_size", 10), "augmentation_noise", 0.0)
+    test_args = update(update(args, "batch_size", 10),
+                       "augmentation_noise", 0.0)
 
     test_inputs, test_targets = make_batch(samples=test_samples, **test_args)
 
     test_targets = test_targets.to(device)
     test_inputs = test_inputs.to(device)
 
-    #scheduler = MultiStepLR(optimizer, milestones=[3, 6], gamma=0.1)
+    # scheduler = MultiStepLR(optimizer, milestones=[3, 6], gamma=0.1)
 
     shutil.rmtree("preview", ignore_errors=True)
     os.makedirs("preview")
@@ -229,7 +250,7 @@ def train(net, args, num_batches, lr, device, train_samples, test_samples, step,
 
         optimizer.zero_grad()
 
-        #train_loss = F.mse_loss(train_outputs, train_targets)
+        # train_loss = F.mse_loss(train_outputs, train_targets)
         train_mse = torch.mean(torch.square(train_outputs - train_targets))
 
         train_mse.backward()
@@ -245,7 +266,8 @@ def train(net, args, num_batches, lr, device, train_samples, test_samples, step,
 
                 test_outputs = net(test_inputs)
 
-                test_mse = torch.mean(torch.square(test_outputs - test_targets))
+                test_mse = torch.mean(torch.square(
+                    test_outputs - test_targets))
 
             log.append({
                 "batch": int(batch),
@@ -255,8 +277,10 @@ def train(net, args, num_batches, lr, device, train_samples, test_samples, step,
                 "train_batch": float(t2 - t1),
             })
 
-            print(" - ".join(f"{key} {value:10.8f}" if isinstance(value, float) else f"{key} {value:10d}" for key, value in log[-1].items()))
-            with open("log.json", "w") as f: json.dump(log, f, indent=4)
+            print(" - ".join(f"{key} {value:10.8f}" if isinstance(value, float)
+                  else f"{key} {value:10d}" for key, value in log[-1].items()))
+            with open("log.json", "w") as f:
+                json.dump(log, f, indent=4)
 
         if batch == 1 or batch % 100 == 0:
             show([
@@ -275,14 +299,14 @@ def train(net, args, num_batches, lr, device, train_samples, test_samples, step,
             torch.save(net.state_dict(), path)
             print("saved net to", path)
 
-
-        #scheduler.step()
+        # scheduler.step()
 
     return optimizer
 
+
 def main():
     step = 10
-    #font = "Verdana"
+    # font = "Verdana"
     fonts = ["Times", "Verdana"]
 
     blur_model = torch.load(f"psfs/step_{step}.pth")
@@ -293,27 +317,27 @@ def main():
         "batch_size": 2,
         "num_batches": 50000,
         "lr": 1e-4,
-        #"train_samples": np.arange(1, 81),
-        #"test_samples": np.arange(81, 101),
+        # "train_samples": np.arange(1, 81),
+        # "test_samples": np.arange(81, 101),
         "augmentation_noise": 0.03,
-        #"fonts": ["Times", "Verdana"],
+        # "fonts": ["Times", "Verdana"],
         "device": torch.device("cuda" if torch.cuda.is_available() else "cpu"),
-        #"train_samples": load_image_pairs_div2k(n=500, train=True),
-        #"test_samples": load_image_pairs_div2k(n=100, train=False),
-        #"train_samples": load_image_pairs_hdc(step=step, font=font, samples=list(range(1, 91))),
-        #"test_samples": load_image_pairs_hdc(step=step, font=font, samples=list(range(91, 101))),
-        #"train_samples": load_image_pairs_hdc2(step=step, font=font, train=True),
-        #"test_samples": load_image_pairs_hdc2(step=step, font=font, train=False),
+        # "train_samples": load_image_pairs_div2k(n=500, train=True),
+        # "test_samples": load_image_pairs_div2k(n=100, train=False),
+        # "train_samples": load_image_pairs_hdc(step=step, font=font, samples=list(range(1, 91))),
+        # "test_samples": load_image_pairs_hdc(step=step, font=font, samples=list(range(91, 101))),
+        # "train_samples": load_image_pairs_hdc2(step=step, font=font, train=True),
+        # "test_samples": load_image_pairs_hdc2(step=step, font=font, train=False),
 
-        #"train_samples": load_image_pairs_hdc_original(step=step, fonts=fonts, samples=list(range(1, 91))) + load_image_pairs_div2k(n=500, train=True),
-        #"test_samples": load_image_pairs_hdc_original(step=step, fonts=fonts, samples=list(range(91, 101))) + load_image_pairs_div2k(n=100, train=False),
+        # "train_samples": load_image_pairs_hdc_original(step=step, fonts=fonts, samples=list(range(1, 91))) + load_image_pairs_div2k(n=500, train=True),
+        # "test_samples": load_image_pairs_hdc_original(step=step, fonts=fonts, samples=list(range(91, 101))) + load_image_pairs_div2k(n=100, train=False),
 
         "train_samples": load_image_pairs_hdc_original(step=step, fonts=fonts, blur_model=blur_model, samples=list(range(1, 91))) + load_image_pairs_div2k(n=500, blur_model=blur_model, train=True),
         "test_samples": load_image_pairs_hdc_original(step=step, fonts=fonts, blur_model=blur_model, samples=list(range(91, 101))) + load_image_pairs_div2k(n=100, blur_model=blur_model, train=False),
 
         # for quick testing
-        #"train_samples": load_image_pairs_hdc_original(step=step, fonts=fonts, blur_model=blur_model, samples=list(range(1, 2))) + load_image_pairs_div2k(n=1, blur_model=blur_model, train=True),
-        #"test_samples": load_image_pairs_hdc_original(step=step, fonts=fonts, blur_model=blur_model, samples=list(range(100, 101))) + load_image_pairs_div2k(n=1, blur_model=blur_model, train=False),
+        # "train_samples": load_image_pairs_hdc_original(step=step, fonts=fonts, blur_model=blur_model, samples=list(range(1, 2))) + load_image_pairs_div2k(n=1, blur_model=blur_model, train=True),
+        # "test_samples": load_image_pairs_hdc_original(step=step, fonts=fonts, blur_model=blur_model, samples=list(range(100, 101))) + load_image_pairs_div2k(n=1, blur_model=blur_model, train=False),
     }
 
     if 0:
@@ -331,7 +355,7 @@ def main():
             input_size=320,
             apply_aspp=False,
             conv_operator="std_conv",
-            #decoder="indexnet",
+            # decoder="indexnet",
             decoder="indexnet",
             decoder_kernel_size=5,
             indexnet="depthwise",
@@ -351,6 +375,7 @@ def main():
         net = MattingModule(net_encoder, net_decoder).to(args["device"])
 
     train(net, args, **args)
+
 
 if __name__ == "__main__":
     main()
